@@ -1,0 +1,65 @@
+---
+bind_dnssec_signing_key_dir: /var/cache/bind/keys
+bind_dnssec_signing_managed_keys_dir: /var/cache/bind/managed-keys
+bind_dnssec_signing_zone_dir: /var/cache/bind/zones
+bind_dnssec_signing_log_dir: /var/log/named
+bind_dnssec_signing_querylog: true
+
+# DNSSEC policies, rendered as dnssec-policy statements. The default is the
+# "production" policy from the post's complete configuration.
+bind_dnssec_signing_policies:
+  - name: production
+    keys:
+      - "ksk key-directory lifetime unlimited algorithm ecdsap256sha256"
+      - "zsk key-directory lifetime P90D algorithm ecdsap256sha256"
+    options:
+      - "dnskey-ttl PT1H"
+      - "publish-safety PT1H"
+      - "retire-safety PT1H"
+      - "purge-keys P90D"
+      - "signatures-refresh P5D"
+      - "signatures-validity P14D"
+      - "signatures-validity-dnskey P14D"
+      - "nsec3param iterations 0 optout no salt-length 0"
+
+# TSIG key for zone transfers to the secondaries. When the secret is empty,
+# allow-transfer is set to none.
+bind_dnssec_signing_transfer_key_name: transfer-key
+bind_dnssec_signing_transfer_key_algorithm: hmac-sha256
+bind_dnssec_signing_transfer_key_secret: ""
+bind_dnssec_signing_also_notify: []
+
+# Zones to serve and sign. records are zone file lines below the SOA.
+bind_dnssec_signing_zones:
+  - name: example.com
+    file: db.example.com
+    policy: production
+    serial: 2024011001
+    soa_mname: ns1.example.com.
+    soa_rname: admin.example.com.
+    records:
+      - "    IN  NS  ns1.example.com."
+      - "    IN  NS  ns2.example.com."
+      - "    IN  MX  10 mail.example.com."
+      - "    IN  A   192.168.1.10"
+      - "ns1 IN  A   192.168.1.1"
+      - "ns2 IN  A   192.168.1.2"
+      - "mail IN A   192.168.1.20"
+      - "www IN  A   192.168.1.10"
+  - name: 1.168.192.in-addr.arpa
+    file: db.192.168.1
+    policy: production
+    serial: 2024011001
+    soa_mname: ns1.example.com.
+    soa_rname: admin.example.com.
+    records:
+      - "    IN  NS  ns1.example.com."
+      - "    IN  NS  ns2.example.com."
+      - "1   IN  PTR ns1.example.com."
+      - "2   IN  PTR ns2.example.com."
+      - "10  IN  PTR www.example.com."
+      - "20  IN  PTR mail.example.com."
+
+# Zone checked by /usr/local/bin/check-dnssec.sh
+bind_dnssec_signing_check_zone: example.com
+bind_dnssec_signing_check_warn_days: 7

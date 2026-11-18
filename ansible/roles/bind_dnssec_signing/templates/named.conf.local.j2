@@ -1,0 +1,29 @@
+// {{ bind_install_local_conf }}
+// {{ ansible_managed }}
+{% if bind_dnssec_signing_transfer_key_secret | length > 0 %}
+
+key "{{ bind_dnssec_signing_transfer_key_name }}" {
+    algorithm {{ bind_dnssec_signing_transfer_key_algorithm }};
+    secret "{{ bind_dnssec_signing_transfer_key_secret }}";
+};
+{% endif %}
+{% for zone in bind_dnssec_signing_zones %}
+
+zone "{{ zone.name }}" {
+    type primary;
+    file "{{ bind_dnssec_signing_zone_dir }}/{{ zone.file }}";
+    dnssec-policy "{{ zone.policy }}";
+    inline-signing yes;
+    key-directory "{{ bind_dnssec_signing_key_dir }}";
+
+    // Allow zone transfers to secondaries
+{% if bind_dnssec_signing_transfer_key_secret | length > 0 %}
+    allow-transfer { key "{{ bind_dnssec_signing_transfer_key_name }}"; };
+{% else %}
+    allow-transfer { none; };
+{% endif %}
+{% if bind_dnssec_signing_also_notify | length > 0 %}
+    also-notify { {% for ip in bind_dnssec_signing_also_notify %}{{ ip }}; {% endfor %}};
+{% endif %}
+};
+{% endfor %}

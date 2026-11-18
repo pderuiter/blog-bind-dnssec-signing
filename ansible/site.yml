@@ -1,0 +1,6 @@
+---
+- name: BIND authoritative server with DNSSEC signing
+  hosts: authoritative
+  roles:
+    - role: bind_install
+    - role: bind_dnssec_signing

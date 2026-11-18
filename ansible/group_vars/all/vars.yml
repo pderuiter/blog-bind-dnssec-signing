@@ -1,0 +1,10 @@
+---
+# Your secondaries, notified after every change (the post uses 192.168.1.2).
+bind_dnssec_signing_also_notify:
+  - 192.168.1.2
+
+# TSIG key for zone transfers (see the RNDC and TSIG post). Put the secret in vault.yml.
+bind_dnssec_signing_transfer_key_name: transfer-key
+bind_dnssec_signing_transfer_key_secret: "{{ vault_bind_dnssec_signing_transfer_key_secret | default('') }}"
+
+# Zones, policies and paths: see roles/bind_dnssec_signing/defaults/main.yml

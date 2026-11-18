@@ -1,0 +1,31 @@
+#!/bin/bash
+# check-dnssec.sh - Monitor DNSSEC signature expiry
+# {{ ansible_managed }}
+
+ZONE="${1:-{{ bind_dnssec_signing_check_zone }}}"
+WARN_DAYS={{ bind_dnssec_signing_check_warn_days }}
+
+# Get signature expiry from zone
+EXPIRY=$(dig +dnssec @localhost $ZONE SOA | \
+    grep RRSIG | \
+    awk '{print $9}' | \
+    head -1)
+
+if [ -n "$EXPIRY" ]; then
+    # Parse DNSSEC timestamp (YYYYMMDDHHMMSS)
+    EXPIRY_EPOCH=$(date -d "${EXPIRY:0:8} ${EXPIRY:8:2}:${EXPIRY:10:2}:${EXPIRY:12:2}" +%s 2>/dev/null)
+    NOW_EPOCH=$(date +%s)
+    DAYS_LEFT=$(( (EXPIRY_EPOCH - NOW_EPOCH) / 86400 ))
+
+    echo "Zone: $ZONE"
+    echo "Signature expires: $EXPIRY"
+    echo "Days remaining: $DAYS_LEFT"
+
+    if [ $DAYS_LEFT -lt $WARN_DAYS ]; then
+        echo "WARNING: Signatures expiring soon!"
+        exit 1
+    fi
+else
+    echo "ERROR: Could not retrieve DNSSEC signatures for $ZONE"
+    exit 2
+fi

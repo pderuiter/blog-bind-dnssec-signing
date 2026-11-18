@@ -1,0 +1,4 @@
+---
+# Copy to vault.yml and encrypt it: ansible-vault encrypt group_vars/all/vault.yml
+# Generate a secret with: tsig-keygen -a hmac-sha256 transfer-key
+vault_bind_dnssec_signing_transfer_key_secret: "base64-secret-from-tsig-keygen=="

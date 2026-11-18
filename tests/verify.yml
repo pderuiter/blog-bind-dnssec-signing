@@ -1,0 +1,81 @@
+---
+# Functional checks from the post. Run after site.yml:
+#   ansible-playbook tests/verify.yml
+- name: Verify DNSSEC signing
+  hosts: authoritative
+  gather_facts: false
+  become: true
+  vars:
+    verify_zone: example.com
+    verify_key_dir: /var/cache/bind/keys
+  tasks:
+    - name: Wait until the zone is signed (DNSKEY with RRSIG)
+      ansible.builtin.command: "dig @127.0.0.1 {{ verify_zone }} DNSKEY +dnssec +norec"
+      register: verify_dnskey
+      changed_when: false
+      until: verify_dnskey.stdout is search('IN\s+RRSIG\s+DNSKEY')
+      retries: 20
+      delay: 3
+
+    - name: Query the SOA with signatures
+      ansible.builtin.command: "dig @127.0.0.1 {{ verify_zone }} SOA +dnssec +norec"
+      register: verify_soa
+      changed_when: false
+
+    - name: Query the NSEC3 parameters
+      ansible.builtin.command: "dig @127.0.0.1 {{ verify_zone }} NSEC3PARAM +short +norec"
+      register: verify_nsec3param
+      changed_when: false
+      until: verify_nsec3param.stdout | length > 0
+      retries: 20
+      delay: 3
+
+    - name: Query the signed reverse zone
+      ansible.builtin.command: dig @127.0.0.1 1.168.192.in-addr.arpa SOA +dnssec +norec
+      register: verify_reverse
+      changed_when: false
+      until: verify_reverse.stdout is search('IN\s+RRSIG\s+SOA')
+      retries: 20
+      delay: 3
+
+    - name: Show the key states
+      ansible.builtin.command: "rndc dnssec -status {{ verify_zone }}"
+      register: verify_status
+      changed_when: false
+
+    - name: Verify the signed zone file
+      ansible.builtin.command: >-
+        dnssec-verify -I raw -o {{ verify_zone }} /var/cache/bind/zones/db.{{ verify_zone }}.signed
+      register: verify_signed_file
+      changed_when: false
+
+    - name: Run the signature expiry check script
+      ansible.builtin.command: /usr/local/bin/check-dnssec.sh
+      register: verify_script
+      changed_when: false
+
+    - name: Build a local trust anchor from the KSK
+      ansible.builtin.shell: |
+        set -o pipefail
+        dig @127.0.0.1 {{ verify_zone }} DNSKEY +norec +noall +answer |
+          awk '$5 == 257 { k = ""; for (i = 8; i <= NF; i++) k = k $i;
+            printf "trust-anchors { %s static-key 257 3 %s \"%s\"; };\n", $1, $7, k }' > /tmp/verify-anchor.conf
+      args:
+        executable: /bin/bash
+      changed_when: false
+
+    - name: Validate the chain with delv against the local anchor
+      ansible.builtin.command: >-
+        delv @127.0.0.1 -a /tmp/verify-anchor.conf +root={{ verify_zone }} www.{{ verify_zone }} A
+      register: verify_delv
+      changed_when: false
+
+    - name: Check the results
+      ansible.builtin.assert:
+        that:
+          - verify_soa.stdout is search('IN\s+RRSIG\s+SOA 13 ')
+          - verify_nsec3param.stdout | trim == '1 0 0 -'
+          - verify_status.stdout is search('dnssec-policy. production')
+          - verify_signed_file.stdout is search('Zone fully signed')
+          - verify_script.rc == 0 and verify_script.stdout is search('Days remaining')
+          - verify_delv.stdout is search('; fully validated')

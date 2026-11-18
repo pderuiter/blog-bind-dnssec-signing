@@ -1,0 +1,70 @@
+---
+- name: Check the OS family
+  ansible.builtin.assert:
+    that:
+      - ansible_facts['os_family'] == 'Debian'
+    fail_msg: "This role follows the post's Debian/Ubuntu layout (/etc/bind, /var/cache/bind)"
+    quiet: true
+
+- name: Create the key, managed-keys and zone directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    owner: "{{ bind_install_user }}"
+    group: "{{ bind_install_group }}"
+    mode: "0750"
+  loop:
+    - "{{ bind_dnssec_signing_key_dir }}"
+    - "{{ bind_dnssec_signing_managed_keys_dir }}"
+    - "{{ bind_dnssec_signing_zone_dir }}"
+    - "{{ bind_dnssec_signing_log_dir }}"
+
+- name: Write the unsigned zone files
+  ansible.builtin.template:
+    src: zone.j2
+    dest: "{{ bind_dnssec_signing_zone_dir }}/{{ item.file }}"
+    owner: "{{ bind_install_user }}"
+    group: "{{ bind_install_group }}"
+    mode: "0640"
+    validate: "named-checkzone {{ item.name }} %s"
+  loop: "{{ bind_dnssec_signing_zones }}"
+  loop_control:
+    label: "{{ item.name }}"
+  notify: Restart named
+
+- name: Configure options, DNSSEC policies and logging
+  ansible.builtin.template:
+    src: named.conf.options.j2
+    dest: "{{ bind_install_options_conf }}"
+    owner: root
+    group: "{{ bind_install_group }}"
+    mode: "0640"
+    validate: named-checkconf %s
+  notify: Restart named
+
+- name: Configure the signed zones
+  ansible.builtin.template:
+    src: named.conf.local.j2
+    dest: "{{ bind_install_local_conf }}"
+    owner: root
+    group: "{{ bind_install_group }}"
+    mode: "0640"
+  no_log: "{{ bind_dnssec_signing_transfer_key_secret | length > 0 }}"
+  notify: Restart named
+
+- name: Check the complete configuration
+  ansible.builtin.command: "named-checkconf {{ bind_install_main_conf }}"
+  changed_when: false
+
+- name: Install the signature expiry check script
+  ansible.builtin.template:
+    src: check-dnssec.sh.j2
+    dest: /usr/local/bin/check-dnssec.sh
+    owner: root
+    group: root
+    mode: "0755"
+
+- name: Start named
+  ansible.builtin.service:
+    name: "{{ bind_install_service }}"
+    state: started

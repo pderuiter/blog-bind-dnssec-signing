@@ -1,0 +1,14 @@
+; {{ bind_dnssec_signing_zone_dir }}/{{ item.file }}
+; {{ ansible_managed }}
+$TTL 86400
+
+@   IN  SOA {{ item.soa_mname }} {{ item.soa_rname }} (
+        {{ item.serial }}  ; Serial
+        3600        ; Refresh
+        1800        ; Retry
+        604800      ; Expire
+        86400 )     ; Minimum TTL
+
+{% for record in item.records %}
+{{ record }}
+{% endfor %}

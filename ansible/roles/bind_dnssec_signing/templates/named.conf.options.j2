@@ -1,0 +1,39 @@
+// {{ bind_install_options_conf }}
+// {{ ansible_managed }}
+
+options {
+    directory "{{ bind_install_data_dir }}";
+
+    // DNSSEC validation for the server's own recursive lookups
+    dnssec-validation auto;
+
+    // Key and managed-keys directory (both must exist, named exits otherwise)
+    key-directory "{{ bind_dnssec_signing_key_dir }}";
+    managed-keys-directory "{{ bind_dnssec_signing_managed_keys_dir }}";
+
+    // Logging
+    querylog {{ 'yes' if bind_dnssec_signing_querylog else 'no' }};
+};
+{% for policy in bind_dnssec_signing_policies %}
+
+dnssec-policy "{{ policy.name }}" {
+    keys {
+{% for key in policy['keys'] %}
+        {{ key }};
+{% endfor %}
+    };
+{% for option in policy.options | default([]) %}
+    {{ option }};
+{% endfor %}
+};
+{% endfor %}
+
+logging {
+    channel dnssec_log {
+        file "{{ bind_dnssec_signing_log_dir }}/dnssec.log" versions 3 size 10m;
+        severity info;
+        print-time yes;
+        print-severity yes;
+    };
+    category dnssec { dnssec_log; };
+};
